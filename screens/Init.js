@@ -680,8 +680,6 @@ useEffect(() => {
     return;
   }
 
-  console.log("✅ Usuario actual:", user.uid);
-
   const unsubscribe = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
     if (docSnap.exists()) {
       const data = docSnap.data();
@@ -833,10 +831,16 @@ useEffect(() => {
     </SafeAreaView>
   );
 }
-function TaskScreen(){
+
+
+function TaskScreen() {
   const [openSection, setOpenSection] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState(null);
 
+  // 🔹 Definición de tareas
   const tareas = {
     Limpieza: [
       "Limpieza Camarines",
@@ -853,31 +857,100 @@ function TaskScreen(){
       "Limpieza Refrigeradores",
       "Limpieza Máquinas de Bebidas",
       "Pre Elaboración de Hot Dogs",
+      "Limpieza Rack de Jarabes",
+      "Calibración Quesera",
+      "Calibración Palomeras",
+      "Boquillas de Bebida",
+      "Limpieza Cuarto de Basura",
+      "Limpieza Exhibidor de Nachos",
+      "Limpieza Vitrinas",
+      "Limpieza Cooler de Helados",
+      "Limpieza Azulejos TrasTienda",
+      "Limpieza Azulejos Dulcería",
     ],
-    "Gestión ADM": [
-      "Contratación de Staff",
-      "Revisar Stock de Productos",
-    ],
+    "Gestión ADM": ["Contratación de Staff", "Revisar Stock de Productos"],
   };
+
+  // 🔹 Cargar staff desde Firestore
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "users"));
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setStaffList(data);
+      } catch (error) {
+        console.error("Error cargando staff:", error);
+      }
+    };
+    fetchStaff();
+  }, []);
 
   const handleToggle = (section) => {
     setOpenSection(openSection === section ? null : section);
   };
 
-  const handleSelectTask = (task) => {
-    setSelectedTask(task);
-    Alert.alert("✅ Tarea seleccionada", `Has seleccionado: ${task}`);
+  const handleSelectTask = (task, section) => {
+    setSelectedTask({ name: task, category: section });
+    setModalVisible(true);
   };
 
-  const handleAssignTask = () => {
-    if (!selectedTask) {
-      Alert.alert("⚠️ No hay tarea seleccionada", "Por favor selecciona una tarea primero.");
+  // 🔹 Asignar tarea al usuario seleccionado
+  const handleAssignTask = async () => {
+    if (!selectedTask || !selectedStaff) {
+      Alert.alert("⚠️ Faltan datos", "Selecciona una tarea y un miembro del staff.");
       return;
     }
-    Alert.alert("📋 Tarea Asignada", `Has asignado: ${selectedTask}`);
-    setSelectedTask(null);
+
+    try {
+      await addDoc(collection(db, "assigned_tasks"), {
+        task_name: selectedTask.name,
+        task_category: selectedTask.category,
+        assigned_to: selectedStaff.id,
+        staff_name: `${selectedStaff.names} ${selectedStaff.surnames}`,
+        created_at: serverTimestamp(),
+      });
+
+      Alert.alert(
+        "✅ Tarea asignada",
+        `${selectedTask.name} fue asignada a ${selectedStaff.names} ${selectedStaff.surnames}`
+      );
+      setSelectedTask(null);
+      setSelectedStaff(null);
+      setModalVisible(false);
+    } catch (error) {
+      console.error("Error asignando tarea:", error);
+      Alert.alert("❌ Error", "No se pudo asignar la tarea.");
+    }
   };
 
+  // 🔹 Filtrar staff según tipo de tarea
+  const getFilteredStaff = () => {
+  if (!selectedTask) return [];
+
+  // 🔸 Tareas de Confitería → solo equipo Dulcería
+  if (selectedTask.category === "Confitería") {
+    return staffList.filter(
+      (u) => u.team?.toLowerCase() === "dulcería"
+    );
+  }
+
+  // 🔸 Tareas de Gestión ADM → solo administradores
+  if (selectedTask.category === "Gestión ADM") {
+    return staffList.filter((u) => {
+      // role_id puede ser string o referencia
+      const rolePath = typeof u.role_id === "string"
+        ? u.role_id
+        : u.role_id?.path || ""; // si es referencia
+      return rolePath.includes("4O38c3nZcIZ2tgnq6ZiV"); // ID del rol admin
+    });
+  }
+
+  // 🔸 Tareas de Limpieza → todos los usuarios
+  return staffList;
+};
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
       <ScrollView style={{ padding: 20 }}>
@@ -901,7 +974,7 @@ function TaskScreen(){
                 padding: 12,
                 borderRadius: 8,
                 flexDirection: "row",
-                justifyContent: "space-between", 
+                justifyContent: "space-between",
                 alignItems: "center",
               }}
               onPress={() => handleToggle(seccion)}
@@ -930,23 +1003,23 @@ function TaskScreen(){
                 {items.map((tarea, i) => (
                   <TouchableOpacity
                     key={i}
-                    onPress={() => handleSelectTask(tarea)}
+                    onPress={() => handleSelectTask(tarea, seccion)}
                     style={{
                       paddingVertical: 10,
                       paddingHorizontal: 12,
                       borderBottomWidth: i < items.length - 1 ? 1 : 0,
                       borderBottomColor: "#eee",
                       backgroundColor:
-                        selectedTask === tarea ? "#d1e7dd" : "transparent",
+                        selectedTask?.name === tarea ? "#d1e7dd" : "transparent",
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 15,
                         color:
-                          selectedTask === tarea ? "#0f5132" : "#212529",
+                          selectedTask?.name === tarea ? "#0f5132" : "#212529",
                         fontWeight:
-                          selectedTask === tarea ? "600" : "400",
+                          selectedTask?.name === tarea ? "600" : "400",
                       }}
                     >
                       {tarea}
@@ -957,56 +1030,102 @@ function TaskScreen(){
             )}
           </View>
         ))}
+      </ScrollView>
 
-        {/* Botones */}
+      {/* Modal de asignación */}
+      <Modal visible={modalVisible} transparent animationType="slide">
         <View
           style={{
-            marginTop: 20,
-            flexDirection: "row",
-            justifyContent: "space-evenly",
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
           }}
         >
-          <TouchableOpacity
+          <View
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "#28a745",
-              padding: 12,
-              borderRadius: 8,
+              backgroundColor: "#fff",
+              borderRadius: 15,
+              padding: 20,
+              width: "90%",
+              maxHeight: "80%",
             }}
-            onPress={() => Alert.alert("🆕 Crear Tarea", "Funcionalidad próxima.")}
           >
-            <Ionicons
-              name="add-circle-outline"
-              size={20}
-              color="#fff"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={{ color: "#fff", fontWeight: "600" }}>Añadir Tarea</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "#ffc107",
-              padding: 12,
-              borderRadius: 8,
-            }}
-            onPress={handleAssignTask}
-          >
-            <Ionicons
-              name="checkmark-done-outline"
-              size={20}
-              color="#212529"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={{ color: "#212529", fontWeight: "600" }}>
-              Asignar Tarea
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: "bold",
+                textAlign: "center",
+                marginBottom: 10,
+              }}
+            >
+              Asignar: {selectedTask?.name}
             </Text>
-          </TouchableOpacity>
+
+            <ScrollView>
+              {getFilteredStaff().length > 0 ? (
+                getFilteredStaff().map((staff) => (
+                  <TouchableOpacity
+                    key={staff.id}
+                    onPress={() => setSelectedStaff(staff)}
+                    style={{
+                      padding: 10,
+                      backgroundColor:
+                        selectedStaff?.id === staff.id
+                          ? "#cde5ff"
+                          : "#f4f4f4",
+                      borderRadius: 8,
+                      marginBottom: 5,
+                    }}
+                  >
+                    <Text>
+                      {staff.names} {staff.surnames} - {staff.team}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={{ textAlign: "center", color: "#777" }}>
+                  No hay personal disponible para esta tarea.
+                </Text>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#007bff",
+                padding: 10,
+                borderRadius: 8,
+                alignItems: "center",
+                marginTop: 10,
+              }}
+              onPress={handleAssignTask}
+            >
+              <Ionicons
+                name="checkmark-done-outline"
+                size={20}
+                color="#fff"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                Confirmar Asignación
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{
+                marginTop: 10,
+                backgroundColor: "#ccc",
+                padding: 10,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={{ fontWeight: "bold" }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 }
